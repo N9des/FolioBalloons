@@ -25,13 +25,16 @@ export default class Sketch {
 
 		// Init scene
 		this.scene = new THREE.Scene();
-		this.scene.background = new THREE.Color(0x8684E4);
+		// this.scene.background = new THREE.Color(0x8684E4);
+		this.scene.background = new THREE.Color(0x330033);
 		THREE.ColorManagement.enabled = false
 
 		// Init values
 		this.time = 0;
 		this.clock = new THREE.Clock();
 		this.model = null;
+		this.speedsPos = [1, 0.8, 1.2, 1.4, 1.2];
+		this.speedsRot = [1, 1.1, 1.2, 1.4, 1.2];
 
 		this.addLoader();
 
@@ -58,7 +61,6 @@ export default class Sketch {
 			this.scene.add(this.model);
 
 			this.addMesh()
-			this.addAnim()
 		})
 	}
 
@@ -115,12 +117,6 @@ export default class Sketch {
 		if (this.model) {
 			this.model.scale.set(0.5, 0.5, 0.5);
 			this.model.position.set(0, 0, 0);
-
-			this.model.traverse((child) => {
-				if (child instanceof THREE.Mesh) {
-					child.position.y = Math.random() * (0.1 + 0.1) - 0.1;
-				}
-			})
 		}
 	}
 
@@ -128,13 +124,14 @@ export default class Sketch {
 		const gui = new dat.GUI();
 	}
 
-	addAnim(random) {
+	addAnim() {
 		const elapsedTime = this.clock.getElapsedTime();
 		if (this.model) {
-			this.model.traverse((child) => {
+			const children = this.model.children
+			children.forEach((child, idx) => {
 				if (child instanceof THREE.Mesh) {
-					child.rotation.z = Math.sin(elapsedTime * 0.8) * 0.1;
-					child.position.y = Math.sin(elapsedTime * 0.8) * 0.1;
+					child.rotation.z = Math.sin(elapsedTime * this.speedsRot[idx]) * 0.05;
+					child.position.y = Math.sin(elapsedTime * this.speedsPos[idx]) * 0.03;
 				}
 			})
 		}
