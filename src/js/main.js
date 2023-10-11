@@ -33,6 +33,7 @@ export default class Sketch {
 		// Init values
 		this.time = 0;
 		this.clock = new THREE.Clock();
+		this.found = null;
 		this.mouseClick = new THREE.Vector2();
 		this.mouseMove = new THREE.Vector2();
 		this.draggable = null;
@@ -69,10 +70,12 @@ export default class Sketch {
 			this.mouseClick.x = (event.clientX / this.sizes.width) * 2 - 1;
 			this.mouseClick.y = -(event.clientY / this.sizes.height) * 2 + 1;
 
-			const found = this.intersect(this.mouseClick);
-			if (found.length > 0) {
-				if (found[0].object.userData.draggable) {
-					this.draggable = found[0].object;
+			this.found = this.intersect(this.mouseClick);
+
+			console.log(this.found);
+			if (this.found.length > 0) {
+				if (this.found[0].object.userData.draggable) {
+					this.draggable = this.found[0].object;
 					console.log(`found draggable ${this.draggable.userData.name}`);
 				}
 			}
@@ -80,7 +83,10 @@ export default class Sketch {
 
 		window.addEventListener('mouseup', (event) => {
 			const idBalloon = this.draggable.userData.id;
-			this.draggable.position.set(this.posXBalloon[idBalloon], 0, 0);
+
+			this.children[idBalloon].targ.x = this.posXBalloon[idBalloon];
+			this.children[idBalloon].targ.y = 0;
+			// this.draggable.position.set(this.posXBalloon[idBalloon], 0, 0);
 			this.draggable = null;
 		});
 
@@ -97,12 +103,16 @@ export default class Sketch {
 
 	dragObject() {
 		if (this.draggable !== null) {
-			const found = this.intersect(this.mouseMove);
-			if (found.length > 0) {
-				for (let i = 0; i < found.length; i++) {
-					let target = found[i].point;
-					this.draggable.position.x = target.x;
-					this.draggable.position.y = target.y;
+			if (this.found !== null && this.found.length > 0) {
+				for (let i = 0; i < this.found.length; i++) {
+					const index = this.found[i].object.userData.id;
+
+					// let target = this.found[i].point;
+
+					this.children[index].targ.x = this.mouseMove.x;
+					this.children[index].targ.y = this.mouseMove.y;
+					// this.draggable.position.x = target.x;
+					// this.draggable.position.y = target.y;
 				}
 			}
 		}
@@ -206,7 +216,17 @@ export default class Sketch {
 		mesh.userData.draggable = true;
 		mesh.userData.id = index;
 
-		this.children[index] = mesh;
+		this.children[index] = {
+			mesh,
+			targ: {
+				x: mesh.position.x,
+				y: mesh.position.y,
+			},
+			curr: {
+				x: mesh.position.x,
+				y: mesh.position.y,
+			},
+		};
 		this.posXBalloon[index] = posX;
 		this.scene.add(mesh);
 	}
@@ -223,11 +243,11 @@ export default class Sketch {
 
 	staticAnim() {
 		this.children.forEach((child, idx) => {
-			if (child instanceof THREE.Mesh) {
-				child.rotation.z =
+			if (child.mesh instanceof THREE.Mesh) {
+				child.mesh.rotation.z =
 					Math.sin(this.elapsedTime * this.speedsRot[idx]) * 0.05;
-				child.position.y =
-					Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
+				// child.position.y = Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
+				child.targ.y = Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
 			}
 		});
 	}
@@ -240,6 +260,19 @@ export default class Sketch {
 
 			// Grab/Drop anim
 			this.dragObject();
+
+			this.children.forEach((child, idx) => {
+				if (child.mesh instanceof THREE.Mesh) {
+					child.curr.x = this.utils.lerp(child.curr.x, child.targ.x, 0.09);
+					child.curr.y = this.utils.lerp(child.curr.y, child.targ.y, 0.09);
+
+					child.mesh.rotation.z =
+						Math.sin(this.elapsedTime * this.speedsRot[idx]) * 0.05;
+					child.mesh.position.x = child.curr.x;
+					child.mesh.position.y = child.curr.y;
+					// child.mesh.position.y = Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
+				}
+			});
 
 			// if (this.children.length > 0) {
 			// 	this.raycaster.setFromCamera(this.mouse, this.camera);
