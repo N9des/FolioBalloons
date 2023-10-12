@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { gsap } from 'gsap';
+import * as CANNON from 'cannon-es';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as dat from 'lil-gui';
+import CannonDebugger from 'cannon-es-debugger';
 
-import vertexShader from '../shaders/vertex.glsl';
-import fragmentShader from '../shaders/fragment.glsl';
+// import vertexShader from '../shaders/vertex.glsl';
+// import fragmentShader from '../shaders/fragment.glsl';
 
 export default class Sketch {
 	constructor() {
@@ -31,23 +32,25 @@ export default class Sketch {
 		THREE.ColorManagement.enabled = false;
 
 		// Init values
-		this.time = 0;
 		this.clock = new THREE.Clock();
+		this.world = null;
+		this.model = null;
+		this.children = [];
+		this.letters = [];
 		this.found = null;
 		this.mouseClick = new THREE.Vector2();
 		this.mouseMove = new THREE.Vector2();
 		this.draggable = null;
-		this.model = null;
-		this.children = [];
 		this.speedsPos = [1, 0.8, 1.2, 1.4, 1.2];
 		this.speedsRot = [1, 1.1, 1.2, 1.4, 1.2];
-		this.currentIntersect = null;
-		this.letters = [];
 		this.posXBalloon = [];
+		this.lerpMultiplier = 0.005;
 		this.utils = {
 			// maValeur = lerp(maValeur, maValeurTarget, 0.09)
 			lerp: (s, e, v) => s * (1 - v) + e * v,
 		};
+
+		this.addCannonWorld();
 
 		this.addRaycaster();
 
@@ -61,6 +64,30 @@ export default class Sketch {
 
 		this.addDebug();
 
+		this.cannonDebugger = new CannonDebugger(this.scene, this.world, {});
+
+		const floor = new THREE.Mesh(
+			new THREE.PlaneGeometry(1.5, 1.5),
+			new THREE.MeshStandardMaterial({
+				color: 0xff0000,
+			})
+		);
+		floor.rotation.x = -Math.PI * 0.5;
+		floor.position.y = -1;
+		this.scene.add(floor);
+
+		const floorShape = new CANNON.Plane();
+		const floorBody = new CANNON.Body({
+			type: CANNON.Body.STATIC,
+		});
+		floorBody.addShape(floorShape);
+		floorBody.quaternion.setFromAxisAngle(
+			new CANNON.Vec3(1, 0, 0),
+			-Math.PI / 2
+		);
+		floorBody.position.set(0, -1, 0);
+		this.world.addBody(floorBody);
+
 		this.render();
 		// Resize
 		window.addEventListener('resize', this.resize.bind(this));
@@ -69,25 +96,28 @@ export default class Sketch {
 		window.addEventListener('mousedown', (event) => {
 			this.mouseClick.x = (event.clientX / this.sizes.width) * 2 - 1;
 			this.mouseClick.y = -(event.clientY / this.sizes.height) * 2 + 1;
+			this.lerpMultiplier = 0.005;
 
-			this.found = this.intersect(this.mouseClick);
+			this.found = this.getIntersect(this.mouseClick);
 
-			console.log(this.found);
 			if (this.found.length > 0) {
 				if (this.found[0].object.userData.draggable) {
 					this.draggable = this.found[0].object;
-					console.log(`found draggable ${this.draggable.userData.name}`);
 				}
 			}
 		});
 
 		window.addEventListener('mouseup', (event) => {
-			const idBalloon = this.draggable.userData.id;
+			if (this.draggable !== null) {
+				const idBalloon = this.draggable.userData.id;
 
-			this.children[idBalloon].targ.x = this.posXBalloon[idBalloon];
-			this.children[idBalloon].targ.y = 0;
-			// this.draggable.position.set(this.posXBalloon[idBalloon], 0, 0);
-			this.draggable = null;
+				this.lerpMultiplier = 0.05;
+
+				this.children[idBalloon].targ.x = this.posXBalloon[idBalloon];
+				this.children[idBalloon].targ.y = 0;
+				// this.draggable.position.set(this.posXBalloon[idBalloon], 0, 0);
+				this.draggable = null;
+			}
 		});
 
 		window.addEventListener('mousemove', (event) => {
@@ -96,7 +126,7 @@ export default class Sketch {
 		});
 	}
 
-	intersect(pos) {
+	getIntersect(pos) {
 		this.raycaster.setFromCamera(pos, this.camera);
 		return this.raycaster.intersectObjects(this.scene.children);
 	}
@@ -107,12 +137,10 @@ export default class Sketch {
 				for (let i = 0; i < this.found.length; i++) {
 					const index = this.found[i].object.userData.id;
 
-					// let target = this.found[i].point;
-
 					this.children[index].targ.x = this.mouseMove.x;
 					this.children[index].targ.y = this.mouseMove.y;
-					// this.draggable.position.x = target.x;
-					// this.draggable.position.y = target.y;
+					this.children[index].meshBody.position.x = this.mouseMove.x;
+					this.children[index].meshBody.position.y = this.mouseMove.y;
 				}
 			}
 		}
@@ -120,6 +148,11 @@ export default class Sketch {
 
 	addRaycaster() {
 		this.raycaster = new THREE.Raycaster();
+	}
+
+	addCannonWorld() {
+		this.world = new CANNON.World();
+		this.world.gravity.set(0, 0, 0);
 	}
 
 	addLoader() {
@@ -203,7 +236,7 @@ export default class Sketch {
 			0.01,
 			10
 		);
-		this.camera.position.z = 1;
+		this.camera.position.z = 2;
 	}
 
 	addDebug() {
@@ -216,8 +249,24 @@ export default class Sketch {
 		mesh.userData.draggable = true;
 		mesh.userData.id = index;
 
+		this.posXBalloon[index] = posX;
+		this.scene.add(mesh);
+
+		// Add physics
+		const meshShape = new CANNON.Box(new CANNON.Vec3(0.1, 0.1, 0.1));
+		const meshBody = new CANNON.Body({
+			mass: 100,
+			force: new CANNON.Vec3(1, 1, 1),
+		});
+		meshBody.addShape(meshShape);
+		meshBody.position.x = mesh.position.x;
+		meshBody.position.y = mesh.position.y;
+		meshBody.position.z = mesh.position.z;
+		this.world.addBody(meshBody);
+
 		this.children[index] = {
 			mesh,
+			meshBody,
 			targ: {
 				x: mesh.position.x,
 				y: mesh.position.y,
@@ -227,23 +276,12 @@ export default class Sketch {
 				y: mesh.position.y,
 			},
 		};
-		this.posXBalloon[index] = posX;
-		this.scene.add(mesh);
 	}
-
-	// onEnter() {
-	// 	this.currentIntersect.object.scale.set(0.31, 0.31, 0.31);
-	// }
-
-	// onLeave(mesh) {
-	// 	const currentObject = mesh || this.currentIntersect;
-
-	// 	currentObject.object.scale.set(0.3, 0.3, 0.3);
-	// }
 
 	staticAnim() {
 		this.children.forEach((child, idx) => {
 			if (child.mesh instanceof THREE.Mesh) {
+				// Move mesh
 				child.mesh.rotation.z =
 					Math.sin(this.elapsedTime * this.speedsRot[idx]) * 0.05;
 				// child.position.y = Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
@@ -263,46 +301,38 @@ export default class Sketch {
 
 			this.children.forEach((child, idx) => {
 				if (child.mesh instanceof THREE.Mesh) {
-					child.curr.x = this.utils.lerp(child.curr.x, child.targ.x, 0.09);
-					child.curr.y = this.utils.lerp(child.curr.y, child.targ.y, 0.09);
+					child.curr.x = this.utils.lerp(
+						child.curr.x,
+						child.targ.x,
+						this.lerpMultiplier
+					);
+					child.curr.y = this.utils.lerp(
+						child.curr.y,
+						child.targ.y,
+						this.lerpMultiplier
+					);
 
 					child.mesh.rotation.z =
 						Math.sin(this.elapsedTime * this.speedsRot[idx]) * 0.05;
 					child.mesh.position.x = child.curr.x;
 					child.mesh.position.y = child.curr.y;
-					// child.mesh.position.y = Math.sin(this.elapsedTime * this.speedsPos[idx]) * 0.03;
+					// Body
+					child.meshBody.position.x = child.curr.x;
+					child.meshBody.position.y = child.curr.y;
+
+					// child.mesh.position.set(
+					// 	child.meshBody.position.x,
+					// 	child.meshBody.position.y,
+					// 	child.meshBody.position.z
+					// );
+					// child.mesh.quaternion.set(
+					// 	child.meshBody.quaternion.x,
+					// 	child.meshBody.quaternion.y,
+					// 	child.meshBody.quaternion.z,
+					// 	child.meshBody.quaternion.w
+					// );
 				}
 			});
-
-			// if (this.children.length > 0) {
-			// 	this.raycaster.setFromCamera(this.mouse, this.camera);
-			// 	const modelIntersects = this.raycaster.intersectObjects(
-			// 		this.scene.children
-			// 	);
-
-			// 	if (modelIntersects.length > 0) {
-			// 		const nearestObject = modelIntersects[modelIntersects.length - 1];
-
-			// 		if (
-			// 			!this.currentIntersect ||
-			// 			(this.currentIntersect && this.currentIntersect !== nearestObject)
-			// 		) {
-			// 			// If we're intersecting a new object but we we were already
-			// 			// intersecting another object at the same time, switch between them
-			// 			this.currentIntersect && this.onLeave(this.currentIntersect);
-
-			// 			// Scale current nearest object
-			// 			this.currentIntersect = modelIntersects[modelIntersects.length - 1];
-			// 			this.onEnter();
-			// 		}
-			// 	} else {
-			// 		if (this.currentIntersect) {
-			// 			// Reset scale on mouse leave
-			// 			this.onLeave();
-			// 			this.currentIntersect = null;
-			// 		}
-			// 	}
-			// }
 		}
 	}
 
@@ -321,6 +351,12 @@ export default class Sketch {
 	}
 
 	render() {
+		const delta = Math.min(this.clock.getDelta(), 0.1);
+
+		// Update World
+		this.world.step(delta);
+		this.cannonDebugger.update();
+
 		this.onAnim();
 
 		// Update controls
