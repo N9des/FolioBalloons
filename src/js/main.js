@@ -268,6 +268,30 @@ export default class Sketch {
 		meshBody.position.z = mesh.position.z;
 		this.world.addBody(meshBody);
 
+		// TEST gravity
+		const sphereGeo = new THREE.SphereGeometry(0.1);
+		const sphereMat = new THREE.MeshNormalMaterial();
+		const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+		sphere.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
+		this.scene.add(sphere);
+		const sphereShape = new CANNON.Sphere(0.1);
+		const sphereBody = new CANNON.Body({
+			mass: 0,
+		});
+		sphereBody.position.set(mesh.position.x, 1, mesh.position.z);
+		sphereBody.addShape(sphereShape);
+		this.world.addBody(sphereBody);
+
+		const localPivotSphere = new CANNON.Vec3(0, 0, 1);
+		const localPivotPlane = new CANNON.Vec3(1, 1, 0);
+		const constraint = new CANNON.PointToPointConstraint(
+			meshBody,
+			localPivotSphere,
+			sphereBody,
+			localPivotPlane
+		);
+		this.world.addConstraint(constraint);
+
 		this.children[index] = {
 			mesh,
 			meshBody,
@@ -298,10 +322,10 @@ export default class Sketch {
 		this.elapsedTime = this.clock.getElapsedTime();
 		if (this.model) {
 			// Anim neutral state
-			this.staticAnim();
+			// this.staticAnim();
 
 			// Grab/Drop anim
-			this.dragObject();
+			// this.dragObject();
 
 			this.children.forEach((child, idx) => {
 				if (child.mesh instanceof THREE.Mesh) {
