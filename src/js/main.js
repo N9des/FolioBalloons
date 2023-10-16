@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as dat from 'lil-gui';
 import CannonDebugger from 'cannon-es-debugger';
+import { DragControls } from 'three/examples/jsm/controls/DragControls';
 
 // import vertexShader from '../shaders/vertex.glsl';
 // import fragmentShader from '../shaders/fragment.glsl';
@@ -66,6 +67,7 @@ export default class Sketch {
 
 		this.cannonDebugger = new CannonDebugger(this.scene, this.world, {});
 
+		// TEST
 		const floor = new THREE.Mesh(
 			new THREE.PlaneGeometry(1.5, 1.5),
 			new THREE.MeshStandardMaterial({
@@ -77,18 +79,19 @@ export default class Sketch {
 		this.scene.add(floor);
 
 		const floorShape = new CANNON.Plane();
-		const floorBody = new CANNON.Body({
+		this.floorBody = new CANNON.Body({
 			type: CANNON.Body.STATIC,
 		});
-		floorBody.addShape(floorShape);
-		floorBody.quaternion.setFromAxisAngle(
+		this.floorBody.addShape(floorShape);
+		this.floorBody.quaternion.setFromAxisAngle(
 			new CANNON.Vec3(1, 0, 0),
 			-Math.PI / 2
 		);
-		floorBody.position.set(0, -1, 0);
-		this.world.addBody(floorBody);
+		this.floorBody.position.set(0, -1, 0);
+		this.world.addBody(this.floorBody);
 
 		this.render();
+
 		// Resize
 		window.addEventListener('resize', this.resize.bind(this));
 
@@ -255,8 +258,9 @@ export default class Sketch {
 		// Add physics
 		const meshShape = new CANNON.Box(new CANNON.Vec3(0.1, 0.1, 0.1));
 		const meshBody = new CANNON.Body({
-			mass: 100,
-			force: new CANNON.Vec3(1, 1, 1),
+			mass: 1,
+			// force: new CANNON.Vec3(1, 1, 1),
+			// velocity: new CANNON.Vec3(0, 1, 0),
 		});
 		meshBody.addShape(meshShape);
 		meshBody.position.x = mesh.position.x;
@@ -320,17 +324,11 @@ export default class Sketch {
 					child.meshBody.position.x = child.curr.x;
 					child.meshBody.position.y = child.curr.y;
 
-					// child.mesh.position.set(
-					// 	child.meshBody.position.x,
-					// 	child.meshBody.position.y,
-					// 	child.meshBody.position.z
-					// );
-					// child.mesh.quaternion.set(
-					// 	child.meshBody.quaternion.x,
-					// 	child.meshBody.quaternion.y,
-					// 	child.meshBody.quaternion.z,
-					// 	child.meshBody.quaternion.w
-					// );
+					child.mesh.position.set(
+						child.meshBody.position.x,
+						child.meshBody.position.y,
+						0
+					);
 				}
 			});
 		}
