@@ -4,7 +4,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as dat from 'lil-gui';
 import CannonDebugger from 'cannon-es-debugger';
-import { DragControls } from 'three/examples/jsm/controls/DragControls';
 
 // import vertexShader from '../shaders/vertex.glsl';
 // import fragmentShader from '../shaders/fragment.glsl';
@@ -35,6 +34,7 @@ export default class Sketch {
 		// Init values
 		this.clock = new THREE.Clock();
 		this.world = null;
+		this.physics = [];
 		this.model = null;
 		this.children = [];
 		this.letters = [];
@@ -67,29 +67,6 @@ export default class Sketch {
 
 		this.cannonDebugger = new CannonDebugger(this.scene, this.world, {});
 
-		// TEST
-		const floor = new THREE.Mesh(
-			new THREE.PlaneGeometry(1.5, 1.5),
-			new THREE.MeshStandardMaterial({
-				color: 0xff0000,
-			})
-		);
-		floor.rotation.x = -Math.PI * 0.5;
-		floor.position.y = -1;
-		this.scene.add(floor);
-
-		const floorShape = new CANNON.Plane();
-		this.floorBody = new CANNON.Body({
-			type: CANNON.Body.STATIC,
-		});
-		this.floorBody.addShape(floorShape);
-		this.floorBody.quaternion.setFromAxisAngle(
-			new CANNON.Vec3(1, 0, 0),
-			-Math.PI / 2
-		);
-		this.floorBody.position.set(0, -1, 0);
-		this.world.addBody(this.floorBody);
-
 		this.render();
 
 		// Resize
@@ -106,6 +83,7 @@ export default class Sketch {
 			if (this.found.length > 0) {
 				if (this.found[0].object.userData.draggable) {
 					this.draggable = this.found[0].object;
+					this.physic = this.found[0].object;
 				}
 			}
 		});
@@ -120,6 +98,7 @@ export default class Sketch {
 				this.children[idBalloon].targ.y = 0;
 				// this.draggable.position.set(this.posXBalloon[idBalloon], 0, 0);
 				this.draggable = null;
+				this.physic = null;
 			}
 		});
 
@@ -142,8 +121,8 @@ export default class Sketch {
 
 					this.children[index].targ.x = this.mouseMove.x;
 					this.children[index].targ.y = this.mouseMove.y;
-					this.children[index].meshBody.position.x = this.mouseMove.x;
-					this.children[index].meshBody.position.y = this.mouseMove.y;
+					// this.children[index].meshBody.position.x = this.mouseMove.x;
+					// this.children[index].meshBody.position.y = this.mouseMove.y;
 				}
 			}
 		}
@@ -258,39 +237,19 @@ export default class Sketch {
 		// Add physics
 		const meshShape = new CANNON.Box(new CANNON.Vec3(0.1, 0.1, 0.1));
 		const meshBody = new CANNON.Body({
-			mass: 1,
-			// force: new CANNON.Vec3(1, 1, 1),
-			// velocity: new CANNON.Vec3(0, 1, 0),
+			mass: 1000,
+			linearFactor: new CANNON.Vec3(1, 1, 0),
+			linearDamping: 0.9,
+			velocity: new CANNON.Vec3(1, 1, 0),
+			fixedRotation: true,
+			force: new CANNON.Vec3(0.1, 0.1, 0),
+			inertia: new CANNON.Vec3(1, 1, 1),
 		});
 		meshBody.addShape(meshShape);
 		meshBody.position.x = mesh.position.x;
 		meshBody.position.y = mesh.position.y;
 		meshBody.position.z = mesh.position.z;
 		this.world.addBody(meshBody);
-
-		// TEST gravity
-		const sphereGeo = new THREE.SphereGeometry(0.1);
-		const sphereMat = new THREE.MeshNormalMaterial();
-		const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-		sphere.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
-		this.scene.add(sphere);
-		const sphereShape = new CANNON.Sphere(0.1);
-		const sphereBody = new CANNON.Body({
-			mass: 0,
-		});
-		sphereBody.position.set(mesh.position.x, 1, mesh.position.z);
-		sphereBody.addShape(sphereShape);
-		this.world.addBody(sphereBody);
-
-		const localPivotSphere = new CANNON.Vec3(0, 0, 1);
-		const localPivotPlane = new CANNON.Vec3(1, 1, 0);
-		const constraint = new CANNON.PointToPointConstraint(
-			meshBody,
-			localPivotSphere,
-			sphereBody,
-			localPivotPlane
-		);
-		this.world.addConstraint(constraint);
 
 		this.children[index] = {
 			mesh,
@@ -300,6 +259,10 @@ export default class Sketch {
 				y: mesh.position.y,
 			},
 			curr: {
+				x: mesh.position.x,
+				y: mesh.position.y,
+			},
+			init: {
 				x: mesh.position.x,
 				y: mesh.position.y,
 			},
@@ -322,10 +285,9 @@ export default class Sketch {
 		this.elapsedTime = this.clock.getElapsedTime();
 		if (this.model) {
 			// Anim neutral state
-			// this.staticAnim();
-
+			this.staticAnim();
 			// Grab/Drop anim
-			// this.dragObject();
+			this.dragObject();
 
 			this.children.forEach((child, idx) => {
 				if (child.mesh instanceof THREE.Mesh) {
@@ -342,17 +304,16 @@ export default class Sketch {
 
 					child.mesh.rotation.z =
 						Math.sin(this.elapsedTime * this.speedsRot[idx]) * 0.05;
-					child.mesh.position.x = child.curr.x;
-					child.mesh.position.y = child.curr.y;
-					// Body
-					child.meshBody.position.x = child.curr.x;
-					child.meshBody.position.y = child.curr.y;
 
-					child.mesh.position.set(
-						child.meshBody.position.x,
-						child.meshBody.position.y,
-						0
-					);
+					if (this.physic && child.mesh.name !== this.physic.name) {
+						child.mesh.position.x = child.meshBody.position.x;
+						child.mesh.position.y = child.meshBody.position.y;
+					} else {
+						child.mesh.position.x = child.curr.x;
+						child.mesh.position.y = child.curr.y;
+						child.meshBody.position.x = child.curr.x;
+						child.meshBody.position.y = child.curr.y;
+					}
 				}
 			});
 		}
